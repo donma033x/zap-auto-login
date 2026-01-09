@@ -67,7 +67,7 @@ xvfb-run uv run python zap_keepalive.py
 
 ## 定时任务
 
-由于 YesCaptcha 需要付费，建议每月运行一次即可保持 VPS 活跃。
+建议每月运行一次即可保持 VPS 活跃。
 
 ```bash
 crontab -e
@@ -76,9 +76,14 @@ crontab -e
 0 10 1 * * cd /path/to/zap-auto-login && xvfb-run /home/user/.local/bin/uv run python zap_keepalive.py >> /tmp/zap.log 2>&1
 ```
 
-## 支持作者
+## 费用说明
 
-本项目使用 [YesCaptcha](https://yescaptcha.com/i/p3c40o) 服务解决 reCAPTCHA 验证码。
+本项目使用 YesCaptcha 解决 reCAPTCHA 验证码：
+- 每次登录消耗约 **15 points**
+- 充值 10 元可获得 **1000+ points**
+- 每月运行一次，理论上可用 **5 年以上**
+
+## 支持作者
 
 如果你觉得这个项目有帮助，欢迎通过推荐链接注册 YesCaptcha（对你没有任何额外费用）：https://yescaptcha.com/i/p3c40o
 
