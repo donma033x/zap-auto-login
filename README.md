@@ -59,11 +59,13 @@ xvfb-run uv run python zap_keepalive.py
 
 ## 定时任务
 
+由于 YesCaptcha 需要付费，建议每月运行一次即可保持 VPS 活跃。
+
 ```bash
 crontab -e
 
-# 每天上午 10 点运行
-0 10 * * * cd /path/to/zap-auto-login && xvfb-run /home/user/.local/bin/uv run python zap_keepalive.py >> /tmp/zap.log 2>&1
+# 每月 1 号上午 10 点运行
+0 10 1 * * cd /path/to/zap-auto-login && xvfb-run /home/user/.local/bin/uv run python zap_keepalive.py >> /tmp/zap.log 2>&1
 ```
 
 ## 支持作者
