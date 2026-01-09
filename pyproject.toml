@@ -1,0 +1,12 @@
+[project]
+name = "zap-auto-login"
+version = "0.1.0"
+description = "ZAP-Hosting Lifetime VPS 保活脚本"
+requires-python = ">=3.10"
+dependencies = [
+    "playwright>=1.40.0",
+    "requests>=2.31.0",
+]
+
+[dependency-groups]
+dev = []

@@ -1,16 +1,4 @@
-# 敏感配置
 .env
-
-# 会话文件
 sessions/
-session.json
-
-# Python
+.venv/
 __pycache__/
-*.pyc
-
-# 截图
-*.png
-
-# 备份
-backup/
