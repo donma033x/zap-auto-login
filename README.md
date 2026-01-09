@@ -81,3 +81,5 @@ crontab -e
 本项目使用 [YesCaptcha](https://yescaptcha.com/i/p3c40o) 服务解决 reCAPTCHA 验证码。
 
 如果你觉得这个项目有帮助，欢迎通过推荐链接注册 YesCaptcha（对你没有任何额外费用）：https://yescaptcha.com/i/p3c40o
+
+另外，代码中包含了作者的 YesCaptcha softID，如果你介意，可以在 `zap_keepalive.py` 中搜索 `softID` 并移除。
