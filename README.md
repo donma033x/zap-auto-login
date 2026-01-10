@@ -1,4 +1,4 @@
-# ZAP-Hosting Lifetime VPS 保活脚本
+# ZAP-Hosting VPS 自动续期脚本
 
 自动登录 ZAP-Hosting 并访问 VPS 详情页，保持 Lifetime VPS 活跃。
 
@@ -24,11 +24,14 @@
 
 ```bash
 # 安装系统依赖
-sudo apt install xvfb  # Debian/Ubuntu
-# sudo yum install xorg-x11-server-Xvfb  # CentOS/RHEL
+sudo apt install -y xvfb  # Debian/Ubuntu
 
 # 安装 uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 克隆项目
+git clone https://github.com/donma033x/zap-renew.git
+cd zap-renew
 
 # 安装项目依赖
 uv sync
@@ -41,28 +44,21 @@ uv run playwright install chromium
 
 ```bash
 cp .env.example .env
-vim .env
+nano .env
 ```
 
-```env
-# YesCaptcha API Key (必需，用于解决 reCAPTCHA)
-YESCAPTCHA_API_KEY=your_api_key
-
-# 账号配置 (格式: 邮箱:密码，多账号逗号分隔)
-ACCOUNTS=user@example.com:password
-
-# VPS 详情页停留时间 (秒)
-STAY_DURATION=10
-
-# Telegram 通知 (可选)
-TELEGRAM_BOT_TOKEN=your_bot_token
-TELEGRAM_CHAT_ID=your_chat_id
-```
+配置说明：
+- `YESCAPTCHA_API_KEY`: YesCaptcha API Key (必需，用于解决 reCAPTCHA)
+- `ACCOUNTS`: 账号配置，格式 `邮箱:密码`，多账号用逗号分隔
+- `STAY_DURATION`: VPS 详情页停留时间 (秒)
+- `TELEGRAM_BOT_TOKEN`: Telegram Bot Token (可选)
+- `TELEGRAM_CHAT_ID`: Telegram Chat ID (可选)
 
 ## 运行
 
 ```bash
-xvfb-run uv run python zap_keepalive.py
+cd zap-renew
+xvfb-run uv run python renew.py
 ```
 
 ## 定时任务
@@ -70,10 +66,11 @@ xvfb-run uv run python zap_keepalive.py
 建议每月运行一次即可保持 VPS 活跃。
 
 ```bash
+# 使用 crontab
 crontab -e
 
 # 每月 1 号上午 10 点运行
-0 10 1 * * cd /path/to/zap-auto-login && xvfb-run /home/user/.local/bin/uv run python zap_keepalive.py >> /tmp/zap.log 2>&1
+0 10 1 * * cd /path/to/zap-renew && xvfb-run ~/.local/bin/uv run python renew.py >> /tmp/zap-renew.log 2>&1
 ```
 
 ## 费用说明
@@ -83,8 +80,13 @@ crontab -e
 - 充值 10 元可获得 **1000+ points**
 - 每月运行一次，理论上可用 **5 年以上**
 
-## 支持作者
+## 文件说明
 
-如果你觉得这个项目有帮助，欢迎通过推荐链接注册 YesCaptcha（对你没有任何额外费用）：https://yescaptcha.com/i/p3c40o
+- `renew.py` - 主脚本
+- `pyproject.toml` - 项目配置和依赖
+- `.env.example` - 配置文件示例
+- `sessions/` - 会话保存目录
 
-另外，代码中包含了作者的 YesCaptcha softID，如果你介意，可以在 `zap_keepalive.py` 中搜索 `softID` 并移除。
+## 许可证
+
+MIT
