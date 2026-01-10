@@ -58,7 +58,7 @@ nano .env
 
 ```bash
 cd zap-renew
-xvfb-run uv run python renew.py
+xvfb-run uv run python zap-renew.py
 ```
 
 ## 定时任务
@@ -70,7 +70,7 @@ xvfb-run uv run python renew.py
 crontab -e
 
 # 每月 1 号上午 10 点运行
-0 10 1 * * cd /path/to/zap-renew && xvfb-run ~/.local/bin/uv run python renew.py >> /tmp/zap-renew.log 2>&1
+0 10 1 * * cd /path/to/zap-renew && xvfb-run ~/.local/bin/uv run python zap-renew.py >> /tmp/zap-renew.log 2>&1
 ```
 
 ## 费用说明
@@ -82,7 +82,7 @@ crontab -e
 
 ## 文件说明
 
-- `renew.py` - 主脚本
+- `zap-renew.py` - 主脚本
 - `pyproject.toml` - 项目配置和依赖
 - `.env.example` - 配置文件示例
 - `sessions/` - 会话保存目录
