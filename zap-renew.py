@@ -314,10 +314,31 @@ class ZapKeepAlive:
         await asyncio.sleep(2)
         
         Logger.log("登录", "点击确认登录按钮...")
-        modal_btn = await self.page.query_selector('#recaptcha-login button:has-text("Log in"), .modal button:has-text("Log in")')
-        if modal_btn and await modal_btn.is_visible():
-            await modal_btn.click(force=True)
-        else:
+        
+        # 尝试多种方式点击登录按钮
+        clicked = False
+        
+        # 方法1: 查找 modal 里的登录按钮
+        for selector in [
+            '#recaptcha-login button:has-text("Log in")',
+            '.modal button:has-text("Log in")',
+            '.modal button[type="submit"]',
+            'form button:has-text("Log in")',
+            'button.btn-primary:has-text("Log in")'
+        ]:
+            try:
+                btn = await self.page.query_selector(selector)
+                if btn and await btn.is_visible():
+                    await btn.click(force=True)
+                    Logger.log("登录", f"点击了 {selector}", "OK")
+                    clicked = True
+                    break
+            except:
+                continue
+        
+        if not clicked:
+            # 方法2: 按 Enter
+            Logger.log("登录", "未找到按钮，按 Enter", "WARN")
             await self.page.keyboard.press('Enter')
         
         Logger.log("登录", "等待登录结果...", "WAIT")
