@@ -2,6 +2,9 @@
 """
 ZAP-Hosting Lifetime VPS 保活脚本
 
+cron: 0 8 1 * *
+new Env('zap-renew')
+
 功能:
 1. 支持多账号
 2. 自动登录 ZAP-Hosting (如果会话过期)
@@ -10,110 +13,68 @@ ZAP-Hosting Lifetime VPS 保活脚本
 5. 停留指定时间后刷新
 6. 保存会话供下次使用
 
-使用方法:
-    1. 复制 .env.example 为 .env
-    2. 填写 YesCaptcha API Key 和账号信息
-    3. 运行: xvfb-run python3 zap_keepalive.py
+环境变量:
+    ACCOUNTS_ZAP: 账号配置，格式: 邮箱:密码,邮箱2:密码2
+    YESCAPTCHA_API_KEY: YesCaptcha API密钥
+    STAY_DURATION: 停留时间(秒)，默认10
+    TELEGRAM_BOT_TOKEN: Telegram机器人Token (可选)
+    TELEGRAM_CHAT_ID: Telegram聊天ID (可选)
 """
 
+import os
 import asyncio
 import json
 import time
-import os
 import requests
 from pathlib import Path
 from datetime import datetime
 from playwright.async_api import async_playwright
 
-# ==================== 加载配置 ====================
-def load_env():
-    """从 .env 文件加载配置"""
-    env_file = Path(__file__).parent / '.env'
-    env_vars = {}
-    
-    if not env_file.exists():
-        print("错误: 未找到 .env 文件")
-        print("请复制 .env.example 为 .env 并填写配置")
-        exit(1)
-    
-    with open(env_file, 'r', encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith('#') and '=' in line:
-                key, value = line.split('=', 1)
-                env_vars[key.strip()] = value.strip()
-    
-    return env_vars
-
-# 加载配置
-ENV = load_env()
-
-# YesCaptcha 配置
-YESCAPTCHA_API_KEY = ENV.get('YESCAPTCHA_API_KEY', '')
+# ==================== 从环境变量加载配置 ====================
+YESCAPTCHA_API_KEY = os.environ.get('YESCAPTCHA_API_KEY', '')
 YESCAPTCHA_API_URL = "https://api.yescaptcha.com"
 
-# 账号配置 (格式: email:password,email:password)
-ACCOUNTS_STR = ENV.get('ACCOUNTS', '')
+ACCOUNTS_STR = os.environ.get('ACCOUNTS_ZAP', '')
+STAY_DURATION = int(os.environ.get('STAY_DURATION', '10'))
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
 
-# VPS 详情页停留时间 (秒)
-STAY_DURATION = int(ENV.get('STAY_DURATION', '10'))
-
-# Telegram 配置
-TELEGRAM_BOT_TOKEN = ENV.get('TELEGRAM_BOT_TOKEN', '')
-TELEGRAM_CHAT_ID = ENV.get('TELEGRAM_CHAT_ID', '')
-
-# ZAP-Hosting 配置
 LOGIN_URL = "https://zap-hosting.com/en/#login"
 DASHBOARD_URL = "https://zap-hosting.com/en/customer/home/"
 SESSION_DIR = Path(__file__).parent / "sessions"
-
-# reCAPTCHA sitekey
 RECAPTCHA_SITEKEY = "6Lc8WwosAAAAABY42gdwB6ShcYBPW_YHTQeIhjav"
 
 
 def parse_accounts(accounts_str: str) -> list:
-    """解析账号配置"""
     accounts = []
     if not accounts_str:
         return accounts
-    
     for item in accounts_str.split(','):
         item = item.strip()
         if ':' in item:
             email, password = item.split(':', 1)
             accounts.append({'email': email.strip(), 'password': password.strip()})
-    
     return accounts
 
 
 def get_session_file(email: str) -> Path:
-    """获取账号对应的会话文件路径"""
     SESSION_DIR.mkdir(exist_ok=True)
     safe_name = email.replace('@', '_at_').replace('.', '_')
     return SESSION_DIR / f"{safe_name}.json"
 
 
-# ==================== 工具类 ====================
 class TelegramNotifier:
-    """Telegram 通知发送器"""
-    
     def __init__(self, bot_token: str, chat_id: str):
         self.bot_token = bot_token
         self.chat_id = chat_id
         self.enabled = bool(bot_token and chat_id)
     
     def send(self, message: str) -> bool:
-        """发送消息到 Telegram"""
         if not self.enabled:
             return False
-        
         try:
             url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
-            payload = {
-                "chat_id": self.chat_id,
-                "text": message,
-                "parse_mode": "HTML"
-            }
+            payload = {"chat_id": self.chat_id, "text": message, "parse_mode": "HTML"}
             response = requests.post(url, json=payload, timeout=10)
             return response.status_code == 200
         except Exception as e:
@@ -122,7 +83,6 @@ class TelegramNotifier:
 
 
 class Logger:
-    """带时间戳的日志输出"""
     @staticmethod
     def log(step: str, msg: str, status: str = "INFO"):
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -132,8 +92,6 @@ class Logger:
 
 
 class YesCaptchaSolver:
-    """使用 YesCaptcha API 解决 reCAPTCHA"""
-    
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.base_url = YESCAPTCHA_API_URL
@@ -150,7 +108,6 @@ class YesCaptchaSolver:
         }
         response = requests.post(f"{self.base_url}/createTask", json=payload, timeout=30)
         result = response.json()
-        
         if result.get("errorId") == 0:
             return result.get("taskId")
         raise Exception(f"YesCaptcha 创建任务失败: {result.get('errorDescription')}")
@@ -158,18 +115,14 @@ class YesCaptchaSolver:
     def get_result(self, task_id: str, max_wait: int = 120) -> str:
         payload = {"clientKey": self.api_key, "taskId": task_id}
         start_time = time.time()
-        
         while time.time() - start_time < max_wait:
             response = requests.post(f"{self.base_url}/getTaskResult", json=payload, timeout=30)
             result = response.json()
-            
             if result.get("errorId") != 0:
                 raise Exception(f"YesCaptcha 错误: {result.get('errorDescription')}")
-            
             if result.get("status") == "ready":
                 return result.get("solution", {}).get("gRecaptchaResponse")
             time.sleep(3)
-        
         raise Exception("YesCaptcha 超时")
     
     def solve(self, site_key: str, page_url: str) -> str:
@@ -183,8 +136,6 @@ class YesCaptchaSolver:
 
 
 class ZapKeepAlive:
-    """ZAP-Hosting 保活主类"""
-    
     def __init__(self, email: str, password: str):
         self.email = email
         self.password = password
@@ -196,7 +147,6 @@ class ZapKeepAlive:
         self.cdp = None
     
     async def handle_cloudflare(self, max_attempts: int = 20) -> bool:
-        """处理 Cloudflare Turnstile 验证"""
         for attempt in range(max_attempts):
             try:
                 await self.page.wait_for_load_state('domcontentloaded', timeout=5000)
@@ -206,7 +156,6 @@ class ZapKeepAlive:
             except:
                 await asyncio.sleep(1)
                 continue
-            
             wrapper = await self.page.query_selector('.main-wrapper')
             if wrapper:
                 rect = await wrapper.bounding_box()
@@ -223,15 +172,11 @@ class ZapKeepAlive:
         return False
     
     async def close_modals(self):
-        """关闭所有弹窗"""
         try:
-            # 点击 "Don't show again"
             dont_show = await self.page.query_selector('button:has-text("Don\'t show again")')
             if dont_show and await dont_show.is_visible():
                 await dont_show.click()
                 await asyncio.sleep(1)
-            
-            # 关闭其他模态框
             close_btns = await self.page.query_selector_all('.modal .close, button.close, [data-dismiss="modal"]')
             for btn in close_btns:
                 try:
@@ -240,23 +185,17 @@ class ZapKeepAlive:
                         await asyncio.sleep(0.5)
                 except:
                     pass
-            
-            # 按 Escape
             await self.page.keyboard.press('Escape')
             await asyncio.sleep(0.5)
         except:
             pass
     
     async def login(self) -> bool:
-        """执行登录流程"""
         Logger.log("登录", f"开始登录 {self.email}...", "WAIT")
-        
-        # 导航到登录页
         Logger.log("登录", "导航到登录页面...")
         await self.page.goto(LOGIN_URL)
         await asyncio.sleep(3)
         
-        # Cloudflare 验证
         Logger.log("登录", "处理 Cloudflare 验证...", "WAIT")
         if not await self.handle_cloudflare():
             Logger.log("登录", "Cloudflare 验证超时", "ERROR")
@@ -264,7 +203,6 @@ class ZapKeepAlive:
         Logger.log("登录", "Cloudflare 验证通过!", "OK")
         await asyncio.sleep(2)
         
-        # 接受 cookies
         try:
             btn = await self.page.query_selector('button:has-text("Accept all")')
             if btn:
@@ -274,7 +212,6 @@ class ZapKeepAlive:
             pass
         await asyncio.sleep(1)
         
-        # 点击登录链接打开对话框
         Logger.log("登录", "打开登录对话框...")
         login_link = await self.page.query_selector('text="Log in!"') or \
                      await self.page.query_selector('text="Already registered"') or \
@@ -283,10 +220,8 @@ class ZapKeepAlive:
             await login_link.click()
             await asyncio.sleep(2)
         
-        # 填写表单
         Logger.log("登录", "填写登录表单...")
         
-        # 查找邮箱输入框
         email_input = None
         for selector in ['input[placeholder*="E-Mail"]', 'input[placeholder*="e-mail"]', 
                          'input[placeholder*="Username"]', '.modal input[type="text"]']:
@@ -312,7 +247,6 @@ class ZapKeepAlive:
             Logger.log("登录", "找不到用户名输入框", "ERROR")
             return False
         
-        # 查找密码输入框
         password_input = None
         all_passwords = await self.page.query_selector_all('input[type="password"]')
         for pwd in all_passwords:
@@ -328,7 +262,6 @@ class ZapKeepAlive:
             Logger.log("登录", "找不到密码输入框", "ERROR")
             return False
         
-        # 点击 Login 按钮
         Logger.log("登录", "点击 Login 按钮...")
         login_btn = None
         for selector in ['button:has-text("Login")', 'button:has-text("Log in")', 'input[type="submit"]']:
@@ -346,7 +279,6 @@ class ZapKeepAlive:
             await password_input.press('Enter')
         await asyncio.sleep(3)
         
-        # 解决 reCAPTCHA
         if self.solver:
             Logger.log("登录", "解决 reCAPTCHA 验证码...", "WAIT")
             try:
@@ -362,11 +294,10 @@ class ZapKeepAlive:
             except Exception as e:
                 Logger.log("登录", f"reCAPTCHA 错误: {e}", "WARN")
         else:
-            Logger.log("登录", "未配置 YesCaptcha API Key，跳过验证码", "WARN")
+            Logger.log("登录", "未配置 YESCAPTCHA_API_KEY，跳过验证码", "WARN")
         
         await asyncio.sleep(2)
         
-        # 点击确认登录按钮
         Logger.log("登录", "点击确认登录按钮...")
         modal_btn = await self.page.query_selector('#recaptcha-login button:has-text("Log in"), .modal button:has-text("Log in")')
         if modal_btn and await modal_btn.is_visible():
@@ -374,7 +305,6 @@ class ZapKeepAlive:
         else:
             await self.page.keyboard.press('Enter')
         
-        # 等待登录结果
         Logger.log("登录", "等待登录结果...", "WAIT")
         await asyncio.sleep(8)
         
@@ -387,22 +317,18 @@ class ZapKeepAlive:
         return False
     
     async def visit_vps_detail(self) -> bool:
-        """访问 VPS 详情页"""
         Logger.log("VPS", "访问 Dashboard...", "WAIT")
         await self.page.goto(DASHBOARD_URL, wait_until='domcontentloaded')
         await asyncio.sleep(3)
         
-        # Cloudflare
         if not await self.handle_cloudflare():
             Logger.log("VPS", "Cloudflare 验证超时", "ERROR")
             return False
         Logger.log("VPS", "Cloudflare 验证通过!", "OK")
         await asyncio.sleep(2)
         
-        # 关闭弹窗
         await self.close_modals()
         
-        # 点击 My VPS
         Logger.log("VPS", "查找 My VPS 入口...")
         vps_link = None
         for selector in ['a:has-text("My VPS")', 'a[href*="vserver"]', 'text=My VPS']:
@@ -419,11 +345,9 @@ class ZapKeepAlive:
             Logger.log("VPS", "点击了 My VPS", "OK")
             await asyncio.sleep(3)
         
-        # Cloudflare
         await self.handle_cloudflare(10)
         await asyncio.sleep(2)
         
-        # 查找 VPS 详情页链接
         Logger.log("VPS", "查找 VPS 详情页...")
         links = await self.page.evaluate('''
             () => {
@@ -435,7 +359,6 @@ class ZapKeepAlive:
             }
         ''')
         
-        # 找到并进入第一个 VPS 详情页
         for link in links:
             if '/id/' in link['href'] or '/show/' in link['href']:
                 await self.page.goto(link['href'])
@@ -445,14 +368,11 @@ class ZapKeepAlive:
         await asyncio.sleep(3)
         await self.handle_cloudflare(10)
         await asyncio.sleep(2)
-        
-        # 关闭弹窗
         await self.close_modals()
         
         current_url = self.page.url
         Logger.log("VPS", f"当前页面: {current_url}")
         
-        # 获取 VPS 信息
         try:
             page_text = await self.page.evaluate('() => document.body.innerText')
             if 'ONLINE' in page_text:
@@ -465,7 +385,6 @@ class ZapKeepAlive:
         return 'vserver' in current_url
     
     async def stay_and_refresh(self):
-        """停留并刷新页面"""
         Logger.log("保活", f"在 VPS 详情页停留 {STAY_DURATION} 秒...", "WAIT")
         for i in range(STAY_DURATION, 0, -1):
             print(f"\r[{datetime.now().strftime('%H:%M:%S')}] [保活] ⏳ 剩余 {i} 秒...", end='', flush=True)
@@ -481,14 +400,12 @@ class ZapKeepAlive:
         Logger.log("保活", "页面已刷新", "OK")
     
     async def save_session(self):
-        """保存会话"""
         cookies = await self.context.cookies()
         with open(self.session_file, 'w') as f:
             json.dump(cookies, f, indent=2)
         Logger.log("会话", f"会话已保存到 {self.session_file.name}", "OK")
     
     async def load_session(self) -> bool:
-        """加载已保存的会话"""
         if self.session_file.exists():
             try:
                 with open(self.session_file) as f:
@@ -501,18 +418,16 @@ class ZapKeepAlive:
         return False
     
     async def run(self) -> bool:
-        """单个账号的运行流程"""
         print()
         print("-" * 60)
         Logger.log("账号", f"开始处理: {self.email}", "WAIT")
         print("-" * 60)
         
         async with async_playwright() as p:
-            # 启动浏览器
             Logger.log("启动", "启动浏览器...")
             self.browser = await p.chromium.launch(
-                headless=False,
-                args=['--disable-blink-features=AutomationControlled']
+                headless=True,
+                args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled']
             )
             self.context = await self.browser.new_context(
                 viewport={'width': 1280, 'height': 900},
@@ -522,21 +437,17 @@ class ZapKeepAlive:
             self.cdp = await self.context.new_cdp_session(self.page)
             Logger.log("启动", "浏览器已启动", "OK")
             
-            # 加载会话
             await self.load_session()
             
-            # 访问 Dashboard 检查是否已登录
             Logger.log("检查", "检查登录状态...", "WAIT")
             await self.page.goto(DASHBOARD_URL, wait_until='domcontentloaded')
             await asyncio.sleep(5)
             
-            # Cloudflare
             cf_passed = await self.handle_cloudflare()
             if cf_passed:
                 Logger.log("检查", "Cloudflare 验证通过", "OK")
             await asyncio.sleep(2)
             
-            # 检查是否需要登录
             current_url = self.page.url
             need_login = 'login' in current_url.lower() or '#login' in current_url or 'customer' not in current_url
             
@@ -549,16 +460,12 @@ class ZapKeepAlive:
             else:
                 Logger.log("检查", "会话有效，已登录", "OK")
             
-            # 访问 VPS 详情页
             if not await self.visit_vps_detail():
                 Logger.log("结果", "访问 VPS 详情页失败", "ERROR")
                 await self.browser.close()
                 return False
             
-            # 停留并刷新
             await self.stay_and_refresh()
-            
-            # 保存会话
             await self.save_session()
             
             Logger.log("结果", f"{self.email} 保活完成!", "OK")
@@ -568,17 +475,18 @@ class ZapKeepAlive:
 
 
 async def main():
-    # 检查配置
     if not YESCAPTCHA_API_KEY:
-        print("警告: 未配置 YESCAPTCHA_API_KEY，登录时可能无法自动解决验证码")
+        print("警告: 未设置 YESCAPTCHA_API_KEY 环境变量，登录时可能无法自动解决验证码")
+    
+    if not ACCOUNTS_STR:
+        print("错误: 未设置 ACCOUNTS_ZAP 环境变量")
+        exit(1)
     
     accounts = parse_accounts(ACCOUNTS_STR)
     if not accounts:
-        print("错误: 未配置账号信息")
-        print("请在 .env 文件中配置 ACCOUNTS=email:password")
+        print("错误: 无有效账号配置")
         exit(1)
     
-    # 初始化 Telegram 通知
     telegram = TelegramNotifier(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
     if telegram.enabled:
         print("✓ Telegram 通知已启用")
@@ -599,7 +507,6 @@ async def main():
         success = await keeper.run()
         results.append({'email': account['email'], 'success': success})
     
-    # 汇总结果
     print()
     print("=" * 60)
     print("  📊 任务汇总")
@@ -614,11 +521,8 @@ async def main():
     print("=" * 60)
     print()
     
-    # 发送 Telegram 通知
     if telegram.enabled:
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
-        # 构建消息
         if success_count == len(results):
             emoji = "✅"
             title = "ZAP 保活成功"

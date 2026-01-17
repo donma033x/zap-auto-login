@@ -1,92 +1,70 @@
-# ZAP-Hosting VPS 自动续期脚本
+# ZAP-Hosting VPS 保活脚本
 
-自动登录 ZAP-Hosting 并访问 VPS 详情页，保持 Lifetime VPS 活跃。
-
-## ⚠️ 免责声明
-
-本项目仅供学习网页自动化技术使用。使用本脚本可能违反相关网站的服务条款，包括但不限于：
-- 禁止使用自动化工具访问
-- 禁止绕过安全验证措施（如 reCAPTCHA）
-
-**使用本项目的风险由用户自行承担**，包括但不限于账号被封禁、服务被终止等后果。请在使用前仔细阅读相关网站的服务条款。
+自动登录 ZAP-Hosting 并访问 VPS 页面以保持 Lifetime VPS 活跃。
 
 ## 功能
 
-- 支持多账号
-- 自动登录
+- 支持多账号批量处理
+- 自动解决 reCAPTCHA 验证 (需要 YesCaptcha)
 - 自动处理 Cloudflare 验证
-- 自动解决 reCAPTCHA (YesCaptcha)
-- 访问 VPS 详情页保活
 - 会话持久化
-- Telegram 通知
+- Telegram 通知支持
 
-## 安装
+## 青龙面板使用
 
-```bash
-# 安装系统依赖
-sudo apt install -y xvfb  # Debian/Ubuntu
+### 1. 添加订阅
 
-# 安装 uv
-curl -LsSf https://astral.sh/uv/install.sh | sh
+在青龙面板的「订阅管理」中添加：
 
-# 克隆项目
-git clone https://github.com/donma033x/zap-renew.git
-cd zap-renew
+- **名称**: zap-renew
+- **链接**: `https://github.com/donma033x/zap-renew.git`
+- **分支**: main
+- **定时规则**: `0 8 * * *`
 
-# 安装项目依赖
-uv sync
+### 2. 配置环境变量
 
-# 安装 Playwright 浏览器
-uv run playwright install chromium
+在青龙面板的「环境变量」中添加：
+
+| 变量名 | 说明 | 示例 |
+|--------|------|------|
+| `ACCOUNTS_ZAP` | 账号配置 | `邮箱:密码,邮箱2:密码2` |
+| `YESCAPTCHA_API_KEY` | YesCaptcha API密钥 | `your_api_key` |
+| `STAY_DURATION` | 停留时间(秒) | `10` |
+| `TELEGRAM_BOT_TOKEN` | TG机器人Token | (可选) |
+| `TELEGRAM_CHAT_ID` | TG聊天ID | (可选) |
+
+**账号格式**: `邮箱:密码`，多账号用逗号分隔
+
+### 3. 安装依赖
+
+在青龙面板的「依赖管理」→「Python3」中安装：
+
+```
+playwright
+requests
 ```
 
-## 配置
+### 4. 系统依赖
+
+需要在容器中安装 xvfb:
 
 ```bash
-cp .env.example .env
-nano .env
+apt-get update && apt-get install -y xvfb xauth
 ```
 
-配置说明：
-- `YESCAPTCHA_API_KEY`: YesCaptcha API Key (必需，用于解决 reCAPTCHA)
-- `ACCOUNTS`: 账号配置，格式 `邮箱:密码`，多账号用逗号分隔
-- `STAY_DURATION`: VPS 详情页停留时间 (秒)
-- `TELEGRAM_BOT_TOKEN`: Telegram Bot Token (可选)
-- `TELEGRAM_CHAT_ID`: Telegram Chat ID (可选)
+### 5. 定时任务
 
-## 运行
+建议每月执行一次:
+- 定时规则: `0 8 1 * *` (每月1号 8:00)
+
+## 手动运行
 
 ```bash
-cd zap-renew
-xvfb-run uv run python zap-renew.py
+export ACCOUNTS_ZAP="your@email.com:password"
+export YESCAPTCHA_API_KEY="your_api_key"
+xvfb-run python3 zap-renew.py
 ```
 
-## 定时任务
+## 许可
 
-建议每月运行一次即可保持 VPS 活跃。
-
-```bash
-# 使用 crontab
-crontab -e
-
-# 每月 1 号上午 10 点运行
-0 10 1 * * cd /path/to/zap-renew && xvfb-run ~/.local/bin/uv run python zap-renew.py >> /tmp/zap-renew.log 2>&1
-```
-
-## 费用说明
-
-本项目使用 YesCaptcha 解决 reCAPTCHA 验证码：
-- 每次登录消耗约 **15 points**
-- 充值 10 元可获得 **1000+ points**
-- 每月运行一次，理论上可用 **5 年以上**
-
-## 文件说明
-
-- `zap-renew.py` - 主脚本
-- `pyproject.toml` - 项目配置和依赖
-- `.env.example` - 配置文件示例
-- `sessions/` - 会话保存目录
-
-## 许可证
-
-MIT
+MIT License
