@@ -426,7 +426,7 @@ class ZapKeepAlive:
         async with async_playwright() as p:
             Logger.log("启动", "启动浏览器...")
             self.browser = await p.chromium.launch(
-                headless=True,
+                headless=False,
                 args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled']
             )
             self.context = await self.browser.new_context(
